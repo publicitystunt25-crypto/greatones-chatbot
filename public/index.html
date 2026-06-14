@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!--
-  THE GREAT ONES — A&R Line Chatbot
+  NATHANIEL THE GREAT — A&R Line Chatbot
   ===================================
   API KEY SETUP (required before deploying publicly):
   This file calls a proxy endpoint at /api/chat to keep your Anthropic API key
@@ -47,7 +47,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>The Great Ones — A&R Line</title>
+  <title>Nathaniel The Great — A&R Line</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500&display=swap" rel="stylesheet">
@@ -448,7 +448,7 @@
 
 <header>
   <div class="header-top">
-    <span class="wordmark">The Great Ones</span>
+    <span class="wordmark">Nathaniel The Great</span>
     <span class="header-dot"></span>
     <span class="header-sub">A&amp;R Line</span>
   </div>
@@ -497,7 +497,7 @@
       </svg>
     </button>
   </div>
-  <p class="disclaimer">AI persona · Not real legal or financial advice · The Great Ones</p>
+  <p class="disclaimer">AI persona · Not real legal or financial advice · Nathaniel The Great</p>
 </div>
 
 <script>
@@ -509,7 +509,7 @@ const API_ENDPOINT = '/api/chat';
 // ═══════════════════════════════════════════════════════
 //  SYSTEM PROMPT
 // ═══════════════════════════════════════════════════════
-const SYSTEM_PROMPT = `You are the CEO of The Great Ones, an independent hip-hop and R&B record label. Artists reach you through this direct line for honest career advice.
+const SYSTEM_PROMPT = `You are the CEO of Nathaniel The Great, an independent hip-hop and R&B record label. Artists reach you through this direct line for honest career advice.
 
 TONE:
 - Blunt, direct, no-BS, conversational — like a text message, not a memo
@@ -526,7 +526,7 @@ TOPICS YOU GIVE REAL ADVICE ON:
 HARD RULES — never break these:
 1. Never promise to sign anyone, listen to music personally, pass music along, or arrange a meeting. If someone asks, redirect with something real about how to get noticed, without promising anything.
 2. Never reveal your real name or any personal identifying info. If asked directly, deflect — say something like "that's not what this line is for" and steer back to their career.
-3. You can reference "The Great Ones" by name as the label.
+3. You can reference "Nathaniel The Great" by name as the label.
 4. Don't give formal legal or financial advice. For contracts, splits, or money decisions, tell them to get a real entertainment lawyer or accountant.
 5. Never insult anyone's identity, appearance, or background — keep it about the music and the business.
 6. Don't encourage anything illegal.
@@ -556,7 +556,7 @@ const TICKER_QUOTES = [
 // ═══════════════════════════════════════════════════════
 //  WELCOME MESSAGE — shown on load, not sent to API
 // ═══════════════════════════════════════════════════════
-const WELCOME_MESSAGE = `You reached the The Great Ones A&R line. Don't waste my time and I won't waste yours.
+const WELCOME_MESSAGE = `You reached the Nathaniel The Great A&R line. Don't waste my time and I won't waste yours.
 
 I'm not here to gas you up — I'm here to give you the real talk most people in this industry won't. About your music, your brand, your business moves. Whatever you actually need to know.
 
@@ -633,7 +633,7 @@ function addMsg(type, content) {
 
   if (type === 'ceo') {
     el.innerHTML = `
-      <div class="msg-label">The Great Ones</div>
+      <div class="msg-label">Nathaniel The Great</div>
       <div class="bubble">${formatText(content)}</div>`;
   } else if (type === 'user') {
     el.innerHTML = `<div class="bubble">${formatText(content)}</div>`;
@@ -654,7 +654,7 @@ function showTyping() {
   el.className = 'msg ceo';
   el.setAttribute('aria-label', 'Loading response');
   el.innerHTML = `
-    <div class="msg-label">The Great Ones</div>
+    <div class="msg-label">Nathaniel The Great</div>
     <div class="bubble">
       <div class="vinyl-wrap">
         <div class="vinyl-disc">${vinylSVG()}</div>
