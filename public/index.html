@@ -232,7 +232,9 @@
       font-size: 15px;
       line-height: 1.65;
       color: var(--text);
-      background: var(--panel);
+      background: rgba(23, 21, 26, 0.55);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
     }
 
     .msg.ceo .bubble {
@@ -245,18 +247,22 @@
     .msg.user { align-self: flex-end; }
 
     .msg.user .bubble {
-      background: rgba(192, 38, 58, 0.13);
-      border: 1px solid rgba(192, 38, 58, 0.28);
+      background: rgba(192, 38, 58, 0.25);
+      border: 1px solid rgba(192, 38, 58, 0.4);
       border-radius: 16px 4px 4px 16px;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
     }
 
     /* Error */
     .msg.error .bubble {
-      background: rgba(192, 38, 58, 0.1);
+      background: rgba(192, 38, 58, 0.2);
       border: 1px solid rgba(192, 38, 58, 0.35);
       color: #e07882;
       border-radius: 4px 16px 16px 4px;
       border-left: 3px solid var(--crimson);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
     }
 
     /* Typing / vinyl indicator */
