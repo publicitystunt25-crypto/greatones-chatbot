@@ -65,7 +65,7 @@ app.post('/api/chat', async (req, res) => {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return res.status(500).json({ error: { message: 'ANTHROPIC_API_KEY is not set on the server.' } });
 
-  const { sessionId, messages } = req.body;
+  const { sessionId, messages, ...anthropicBody } = req.body;
 
   // Log the latest user message
   if (sessionId && messages?.length) {
@@ -81,7 +81,7 @@ app.post('/api/chat', async (req, res) => {
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
       },
-      body: JSON.stringify(req.body),
+      body: JSON.stringify({ ...anthropicBody, messages }),
     });
 
     const data = await response.json();
