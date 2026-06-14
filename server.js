@@ -14,15 +14,16 @@ const pool = process.env.DATABASE_URL
 async function initDb() {
   if (!pool) return;
   await pool.query(`
-    CREATE TABLE IF NOT EXISTS conversations (
+    DROP TABLE IF EXISTS conversations;
+    CREATE TABLE conversations (
       id SERIAL PRIMARY KEY,
       session_id TEXT NOT NULL,
       role TEXT NOT NULL,
       content TEXT NOT NULL,
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
-    CREATE INDEX IF NOT EXISTS idx_conversations_session ON conversations(session_id);
-    CREATE INDEX IF NOT EXISTS idx_conversations_created ON conversations(created_at DESC);
+    CREATE INDEX idx_conversations_session ON conversations(session_id);
+    CREATE INDEX idx_conversations_created ON conversations(created_at DESC);
   `);
   console.log('Database ready');
 }
