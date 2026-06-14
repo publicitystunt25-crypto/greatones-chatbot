@@ -506,6 +506,9 @@
 // ═══════════════════════════════════════════════════════
 const API_ENDPOINT = '/api/chat';
 
+// Generate a unique session ID per browser tab visit
+const SESSION_ID = Date.now().toString(36) + Math.random().toString(36).slice(2);
+
 // ═══════════════════════════════════════════════════════
 //  SYSTEM PROMPT
 // ═══════════════════════════════════════════════════════
@@ -700,6 +703,7 @@ async function send(text) {
         max_tokens: 1024,
         system: SYSTEM_PROMPT,
         messages: history,
+        sessionId: SESSION_ID,
       }),
     });
 
