@@ -672,53 +672,68 @@ btn.addEventListener('click', () => {
 });
 
 // ═══════════════════════════════════════════════════════
-//  MIC / SPEECH-TO-TEXT
+//  MIC / SPEECH-TO-TEXT (Deepgram via MediaRecorder)
 // ═══════════════════════════════════════════════════════
 const micBtn = document.getElementById('mic-btn');
-const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 
-if (!SR) {
+if (!navigator.mediaDevices || !window.MediaRecorder) {
   micBtn.style.display = 'none';
 } else {
-  const recognition = new SR();
-  recognition.continuous = false;
-  recognition.interimResults = true;
-  recognition.lang = 'en-US';
-
+  let mediaRecorder = null;
+  let audioChunks = [];
   let listening = false;
 
-  micBtn.addEventListener('click', () => {
+  micBtn.addEventListener('click', async () => {
     if (listening) {
-      recognition.stop();
-    } else {
-      recognition.start();
+      mediaRecorder.stop();
+      return;
     }
-  });
 
-  recognition.addEventListener('start', () => {
-    listening = true;
-    micBtn.classList.add('listening');
-    micBtn.setAttribute('aria-label', 'Stop recording');
-  });
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioChunks = [];
+      mediaRecorder = new MediaRecorder(stream);
 
-  recognition.addEventListener('result', e => {
-    const transcript = Array.from(e.results)
-      .map(r => r[0].transcript)
-      .join('');
-    input.value = transcript;
-    autoResize();
-  });
+      mediaRecorder.addEventListener('dataavailable', e => {
+        if (e.data.size > 0) audioChunks.push(e.data);
+      });
 
-  recognition.addEventListener('end', () => {
-    listening = false;
-    micBtn.classList.remove('listening');
-    micBtn.setAttribute('aria-label', 'Voice input');
-  });
+      mediaRecorder.addEventListener('stop', async () => {
+        listening = false;
+        micBtn.classList.remove('listening');
+        micBtn.setAttribute('aria-label', 'Voice input');
+        stream.getTracks().forEach(t => t.stop());
 
-  recognition.addEventListener('error', () => {
-    listening = false;
-    micBtn.classList.remove('listening');
-    micBtn.setAttribute('aria-label', 'Voice input');
+        const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType });
+        micBtn.disabled = true;
+
+        try {
+          const res = await fetch('/api/transcribe', {
+            method: 'POST',
+            headers: { 'Content-Type': blob.type },
+            body: blob,
+          });
+          const data = await res.json();
+          if (data.transcript) {
+            input.value = data.transcript;
+            autoResize();
+            input.focus();
+          }
+        } catch {
+          // silently fail — user can just type
+        } finally {
+          micBtn.disabled = false;
+        }
+      });
+
+      mediaRecorder.start();
+      listening = true;
+      micBtn.classList.add('listening');
+      micBtn.setAttribute('aria-label', 'Stop recording');
+    } catch {
+      // microphone permission denied — hide button
+      micBtn.style.display = 'none';
+    }
   });
 }
 
