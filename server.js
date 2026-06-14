@@ -240,26 +240,50 @@ app.get('/admin/session/:sessionId', adminAuth, async (req, res) => {
   if (!pool) return res.status(503).send('No database connected.');
 
   const { sessionId } = req.params;
-  const result = await pool.query(
-    'SELECT role, content, created_at FROM conversations WHERE session_id = $1 ORDER BY created_at ASC',
-    [sessionId]
-  );
 
-  const messages = result.rows.map(r => {
+  const [msgResult, leadResult] = await Promise.all([
+    pool.query('SELECT role, content, created_at FROM conversations WHERE session_id = $1 ORDER BY created_at ASC', [sessionId]),
+    pool.query('SELECT artist, instagram, email, phone FROM leads WHERE session_id = $1 LIMIT 1', [sessionId]),
+  ]);
+
+  const lead = leadResult.rows[0] || {};
+  const displayName = lead.artist || 'Unknown Artist';
+
+  const messages = msgResult.rows.map(r => {
     const isUser = r.role === 'user';
-    return `<div style="margin-bottom:16px;display:flex;flex-direction:column;align-items:${isUser ? 'flex-end' : 'flex-start'}">
-      <div style="font-size:10px;color:#8d8893;margin-bottom:4px;${isUser ? 'text-align:right' : ''}">${isUser ? 'ARTIST' : 'NATHANIEL THE GREAT'} · ${new Date(r.created_at).toLocaleString()}</div>
-      <div style="max-width:75%;padding:12px 16px;border-radius:${isUser ? '16px 4px 4px 16px' : '4px 16px 16px 4px'};background:${isUser ? 'rgba(192,38,58,0.15)' : '#17151a'};border-left:${isUser ? 'none' : '3px solid #e3b23c'};font-size:14px;line-height:1.6;white-space:pre-wrap">${escHtml(r.content)}</div>
+    const label = isUser ? escHtml(displayName) : 'Nathaniel The Great';
+    const time = new Date(r.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return `<div style="margin-bottom:20px;display:flex;flex-direction:column;align-items:${isUser ? 'flex-end' : 'flex-start'}">
+      <div style="font-size:11px;color:#8d8893;margin-bottom:5px">${label} · ${time}</div>
+      <div style="max-width:75%;padding:12px 16px;border-radius:${isUser ? '16px 4px 4px 16px' : '4px 16px 16px 4px'};background:${isUser ? 'rgba(192,38,58,0.15)' : '#17151a'};${isUser ? 'border:1px solid rgba(192,38,58,0.3)' : 'border-left:3px solid #e3b23c'};font-size:14px;line-height:1.6;white-space:pre-wrap">${escHtml(r.content)}</div>
     </div>`;
   }).join('');
 
-  res.send(`<!DOCTYPE html><html><head><title>Session — Admin</title>
+  res.send(`<!DOCTYPE html><html><head><title>${escHtml(displayName)} — Conversation</title>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <style>body{font-family:sans-serif;background:#0c0c0e;color:#f1ede4;padding:24px;margin:0;max-width:800px}
-  a{color:#e3b23c}h2{color:#e3b23c;margin-bottom:20px;font-size:18px}</style></head><body>
-  <a href="/admin">← Back</a>
-  <h2>Session: ${escHtml(sessionId)}</h2>
-  ${messages || '<p style="color:#8d8893">No messages.</p>'}
+  <style>
+    body{font-family:sans-serif;background:#0c0c0e;color:#f1ede4;padding:24px;margin:0}
+    .wrap{max-width:700px;margin:0 auto}
+    a{color:#8d8893;text-decoration:none;font-size:13px}
+    a:hover{color:#e3b23c}
+    .artist-card{background:#111;border:1px solid #252230;border-radius:12px;padding:18px 20px;margin:16px 0 28px;display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    .artist-card h2{color:#e3b23c;font-size:20px;margin:0 0 4px;grid-column:1/-1}
+    .info-item{font-size:13px;color:#8d8893}
+    .info-item span{color:#f1ede4}
+    .messages{padding-top:8px}
+  </style></head><body>
+  <div class="wrap">
+    <a href="/admin">← Back to Dashboard</a>
+    <div class="artist-card">
+      <h2>${escHtml(displayName)}</h2>
+      ${lead.instagram ? `<div class="info-item">Instagram: <span>${escHtml(lead.instagram)}</span></div>` : ''}
+      ${lead.email ? `<div class="info-item">Email: <span>${escHtml(lead.email)}</span></div>` : ''}
+      ${lead.phone ? `<div class="info-item">Phone: <span>${escHtml(lead.phone)}</span></div>` : ''}
+    </div>
+    <div class="messages">
+      ${messages || '<p style="color:#8d8893">No messages in this session.</p>'}
+    </div>
+  </div>
   </body></html>`);
 });
 
