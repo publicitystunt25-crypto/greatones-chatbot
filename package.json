@@ -1,0 +1,12 @@
+{
+  "name": "greatones-chatbot",
+  "version": "1.0.0",
+  "description": "The Great Ones A&R Line chatbot",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}
