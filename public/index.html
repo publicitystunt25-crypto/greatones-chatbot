@@ -726,7 +726,7 @@ const TICKER_QUOTES = [
 // ═══════════════════════════════════════════════════════
 //  WELCOME MESSAGE — shown on load, not sent to API
 // ═══════════════════════════════════════════════════════
-const WELCOME_MESSAGE = `What's good — you reached the Nathaniel The Great A&R line. Don't waste my time and I won't waste yours.
+const WELCOME_MESSAGE = `What's good — you reached the Nathaniel The Great A&R line.
 
 I ain't here to gas you up. I'm here to give you the real talk most people in this industry won't. Your music, your brand, your business moves — whatever you need to know, ask it.
 
@@ -1044,18 +1044,6 @@ async function pollAdmin() {
 
     if (data.takeover !== adminTakeover) {
       adminTakeover = data.takeover;
-      const indicator = document.getElementById('live-indicator');
-      if (adminTakeover) {
-        if (!indicator) {
-          const div = document.createElement('div');
-          div.id = 'live-indicator';
-          div.style.cssText = 'text-align:center;padding:6px;font-size:11px;color:#e3b23c;letter-spacing:0.1em;font-family:Anton,sans-serif;background:rgba(227,178,60,0.08);border-bottom:1px solid rgba(227,178,60,0.2)';
-          div.textContent = '🎙 NATHANIEL IS LIVE';
-          document.querySelector('.input-area').before(div);
-        }
-      } else {
-        indicator && indicator.remove();
-      }
     }
 
     if (data.message) {
