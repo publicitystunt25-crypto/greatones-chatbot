@@ -25,16 +25,15 @@ async function initDb() {
     );
   `);
   await pool.query(`
-    DROP TABLE IF EXISTS conversations;
-    CREATE TABLE conversations (
+    CREATE TABLE IF NOT EXISTS conversations (
       id SERIAL PRIMARY KEY,
       session_id TEXT NOT NULL,
       role TEXT NOT NULL,
       content TEXT NOT NULL,
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
-    CREATE INDEX idx_conversations_session ON conversations(session_id);
-    CREATE INDEX idx_conversations_created ON conversations(created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_conversations_session ON conversations(session_id);
+    CREATE INDEX IF NOT EXISTS idx_conversations_created ON conversations(created_at DESC);
   `);
   console.log('Database ready');
 }
