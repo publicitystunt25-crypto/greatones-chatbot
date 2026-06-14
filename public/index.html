@@ -179,7 +179,23 @@
       display: flex;
       flex-direction: column;
       gap: 18px;
+      background-image: url('/bg.jpeg');
+      background-size: cover;
+      background-position: center top;
+      background-attachment: local;
+      position: relative;
     }
+
+    #messages::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: rgba(12, 12, 14, 0.72);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    #messages > * { position: relative; z-index: 1; }
 
     #messages::-webkit-scrollbar { width: 4px; }
     #messages::-webkit-scrollbar-track { background: transparent; }
