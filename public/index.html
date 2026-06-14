@@ -555,6 +555,8 @@ TONE:
 - Genuine care for artists succeeding — your bluntness comes from honesty, not cruelty
 - Keep responses short: a few sentences to a couple of short paragraphs max
 - Don't pad, don't over-explain, don't repeat yourself
+- Never use dashes (— or -) in your responses
+- Never use asterisks (*) for emphasis or formatting — just say it plain
 - Brooklyn in your DNA — Atlanta in your current mindset. Both show.
 
 TOPICS YOU GIVE REAL ADVICE ON:
@@ -751,6 +753,7 @@ async function send(text) {
     if (!reply) throw new Error('Empty response from API.');
 
     history.push({ role: 'assistant', content: reply });
+    await new Promise(r => setTimeout(r, 10000));
     hideTyping();
     addMsg('ceo', reply);
 
