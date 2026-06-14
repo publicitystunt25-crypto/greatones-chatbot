@@ -23,8 +23,6 @@ async function initDb() {
       phone TEXT,
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
-  `);
-  await pool.query(`
     CREATE TABLE IF NOT EXISTS conversations (
       id SERIAL PRIMARY KEY,
       session_id TEXT NOT NULL,
@@ -34,6 +32,23 @@ async function initDb() {
     );
     CREATE INDEX IF NOT EXISTS idx_conversations_session ON conversations(session_id);
     CREATE INDEX IF NOT EXISTS idx_conversations_created ON conversations(created_at DESC);
+    CREATE TABLE IF NOT EXISTS session_takeovers (
+      session_id TEXT PRIMARY KEY,
+      active BOOLEAN DEFAULT TRUE,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS admin_messages (
+      id SERIAL PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      content TEXT NOT NULL,
+      delivered BOOLEAN DEFAULT FALSE,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS flagged_sessions (
+      session_id TEXT PRIMARY KEY,
+      reason TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
   `);
   console.log('Database ready');
 }
@@ -49,6 +64,59 @@ async function logMessage(sessionId, role, content) {
     console.error('DB log error:', err.message);
   }
 }
+
+const PAYMENT_KEYWORDS = ['pay you','pay me','pay the team','how much','pricing','rates','hire you','hire the team','work with you','work with your team','cost','invoice','budget','retainer','fee','fees','how do i pay','i want to pay','ready to pay','sign up','purchase','buy'];
+
+async function checkAndFlagPayment(sessionId, content) {
+  if (!pool) return;
+  const lower = content.toLowerCase();
+  if (PAYMENT_KEYWORDS.some(k => lower.includes(k))) {
+    await pool.query(
+      `INSERT INTO flagged_sessions (session_id, reason) VALUES ($1, $2)
+       ON CONFLICT (session_id) DO NOTHING`,
+      [sessionId, 'Payment intent detected']
+    );
+  }
+}
+
+// ── POLL — client checks for admin messages ───────────────
+app.get('/api/poll/:sessionId', async (req, res) => {
+  if (!pool) return res.json({ takeover: false, message: null });
+  const { sessionId } = req.params;
+  const [takeoverRes, msgRes] = await Promise.all([
+    pool.query('SELECT active FROM session_takeovers WHERE session_id = $1', [sessionId]),
+    pool.query('SELECT id, content FROM admin_messages WHERE session_id = $1 AND delivered = FALSE ORDER BY created_at ASC LIMIT 1', [sessionId]),
+  ]);
+  const takeover = takeoverRes.rows[0]?.active || false;
+  const msg = msgRes.rows[0] || null;
+  if (msg) {
+    await pool.query('UPDATE admin_messages SET delivered = TRUE WHERE id = $1', [msg.id]);
+  }
+  res.json({ takeover, message: msg ? msg.content : null });
+});
+
+// ── ADMIN TAKEOVER CONTROLS ───────────────────────────────
+app.post('/admin/api/takeover/:sessionId', adminAuth, async (req, res) => {
+  if (!pool) return res.json({ ok: false });
+  const { sessionId } = req.params;
+  const { active } = req.body;
+  await pool.query(
+    `INSERT INTO session_takeovers (session_id, active) VALUES ($1, $2)
+     ON CONFLICT (session_id) DO UPDATE SET active = $2`,
+    [decodeURIComponent(sessionId), active]
+  );
+  res.json({ ok: true });
+});
+
+app.post('/admin/api/send/:sessionId', adminAuth, async (req, res) => {
+  if (!pool) return res.json({ ok: false });
+  const { sessionId } = req.params;
+  const { content } = req.body;
+  const sid = decodeURIComponent(sessionId);
+  await pool.query('INSERT INTO admin_messages (session_id, content) VALUES ($1, $2)', [sid, content]);
+  await logMessage(sid, 'assistant', content);
+  res.json({ ok: true });
+});
 
 // ── LEAD CAPTURE ─────────────────────────────────────────
 app.post('/api/lead', async (req, res) => {
@@ -93,10 +161,21 @@ app.post('/api/chat', async (req, res) => {
 
   const { sessionId, messages, ...anthropicBody } = req.body;
 
-  // Log the latest user message
+  // Log user message and check for payment intent
   if (sessionId && messages?.length) {
     const last = messages[messages.length - 1];
-    if (last.role === 'user') await logMessage(sessionId, 'user', last.content);
+    if (last.role === 'user') {
+      await logMessage(sessionId, 'user', last.content);
+      await checkAndFlagPayment(sessionId, last.content);
+    }
+  }
+
+  // If admin has taken over this session, hold — client will get message via poll
+  if (pool && sessionId) {
+    const t = await pool.query('SELECT active FROM session_takeovers WHERE session_id = $1', [sessionId]);
+    if (t.rows[0]?.active) {
+      return res.json({ takeover: true });
+    }
   }
 
   try {
@@ -157,21 +236,29 @@ app.get('/admin', adminAuth, async (req, res) => {
   const total = parseInt(countRes.rows[0].count);
   const totalPages = Math.ceil(total / limit);
 
-  const sessionsRes = await pool.query(
-    `SELECT session_id,
-            MIN(created_at) AS started,
-            MAX(created_at) AS last_msg,
-            COUNT(*) AS msg_count,
-            (SELECT content FROM conversations c2
-             WHERE c2.session_id = c.session_id AND c2.role = 'user'
-             ORDER BY created_at LIMIT 1) AS first_message
-     FROM conversations c
-     WHERE ($1 = '' OR content ILIKE $2)
-     GROUP BY session_id
-     ORDER BY last_msg DESC
-     LIMIT $3 OFFSET $4`,
-    [search, `%${search}%`, limit, offset]
-  );
+  const [sessionsRes, flaggedRes, takeoverRes] = await Promise.all([
+    pool.query(
+      `SELECT c.session_id,
+              MIN(c.created_at) AS started,
+              MAX(c.created_at) AS last_msg,
+              COUNT(*) AS msg_count,
+              (SELECT content FROM conversations c2
+               WHERE c2.session_id = c.session_id AND c2.role = 'user'
+               ORDER BY created_at LIMIT 1) AS first_message,
+              f.session_id IS NOT NULL AS flagged,
+              t.active AS takeover_active
+       FROM conversations c
+       LEFT JOIN flagged_sessions f ON f.session_id = c.session_id
+       LEFT JOIN session_takeovers t ON t.session_id = c.session_id
+       WHERE ($1 = '' OR c.content ILIKE $2)
+       GROUP BY c.session_id, f.session_id, t.active
+       ORDER BY last_msg DESC
+       LIMIT $3 OFFSET $4`,
+      [search, `%${search}%`, limit, offset]
+    ),
+    pool.query('SELECT session_id FROM flagged_sessions'),
+    pool.query('SELECT session_id FROM session_takeovers WHERE active = TRUE'),
+  ]);
 
   const leadsRes = await pool.query(
     `SELECT session_id, artist, instagram, email, phone, created_at FROM leads ORDER BY created_at DESC LIMIT 100`
@@ -190,7 +277,8 @@ app.get('/admin', adminAuth, async (req, res) => {
       <td>${new Date(r.started).toLocaleString()}</td>
       <td>${new Date(r.last_msg).toLocaleString()}</td>
       <td>${r.msg_count}</td>
-      <td style="max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(r.first_message || '')}</td>
+      <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(r.first_message || '')}</td>
+      <td>${r.flagged ? '<span style="background:#c0263a;color:#fff;font-size:10px;padding:2px 8px;border-radius:10px;font-weight:bold">💰 WANTS TO PAY</span>' : ''} ${r.takeover_active ? '<span style="background:#e3b23c;color:#000;font-size:10px;padding:2px 8px;border-radius:10px;font-weight:bold">🎙 LIVE</span>' : ''}</td>
     </tr>`).join('');
 
   const pages = Array.from({ length: totalPages }, (_, i) => i + 1).map(p =>
@@ -235,39 +323,121 @@ app.get('/admin', adminAuth, async (req, res) => {
   <div class="pages">${pages}</div>
 
   <div id="conversation-panel" style="display:none;margin-top:40px;border-top:1px solid #252230;padding-top:28px">
-    <h2 id="convo-title" style="color:#e3b23c;font-size:18px;margin-bottom:20px"></h2>
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;flex-wrap:wrap">
+      <h2 id="convo-title" style="color:#e3b23c;font-size:18px;margin:0"></h2>
+      <span id="live-badge" style="display:none;background:#e3b23c;color:#000;font-size:11px;padding:3px 10px;border-radius:10px;font-weight:bold">🎙 YOU'RE LIVE</span>
+    </div>
+    <div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap">
+      <button id="takeover-btn" onclick="toggleTakeover()" style="background:#e3b23c;color:#000;border:none;padding:9px 18px;border-radius:8px;cursor:pointer;font-weight:bold;font-size:13px">Take Over Chat</button>
+      <button onclick="refreshConvo()" style="background:#17151a;color:#f1ede4;border:1px solid #252230;padding:9px 18px;border-radius:8px;cursor:pointer;font-size:13px">Refresh</button>
+    </div>
+    <div id="takeover-input" style="display:none;margin-bottom:20px;display:none">
+      <div style="display:flex;gap:10px">
+        <input id="admin-msg" placeholder="Type your reply as Nathaniel…" style="flex:1;background:#0c0c0e;border:1px solid #e3b23c;color:#fff;padding:11px 14px;border-radius:10px;font-size:14px;outline:none">
+        <button onclick="sendAdminMsg()" style="background:#e3b23c;color:#000;border:none;padding:11px 20px;border-radius:10px;cursor:pointer;font-weight:bold">Send</button>
+      </div>
+    </div>
     <div id="convo-messages"></div>
   </div>
 
   <script>
+  let currentSession = null;
+  let currentName = null;
+  let isTakeover = false;
+  let refreshTimer = null;
+
   async function loadConvo(sessionId, name) {
+    currentSession = sessionId;
+    currentName = name;
     const panel = document.getElementById('conversation-panel');
     const title = document.getElementById('convo-title');
-    const msgs  = document.getElementById('convo-messages');
     title.textContent = name;
-    msgs.innerHTML = '<p style="color:#8d8893">Loading…</p>';
     panel.style.display = 'block';
     panel.scrollIntoView({ behavior: 'smooth' });
+    if (refreshTimer) clearInterval(refreshTimer);
+    await refreshConvo();
+    refreshTimer = setInterval(refreshConvo, 5000);
+  }
 
-    const res  = await fetch('/admin/api/session/' + sessionId);
+  async function refreshConvo() {
+    if (!currentSession) return;
+    const msgs = document.getElementById('convo-messages');
+    const res  = await fetch('/admin/api/session/' + currentSession);
     const data = await res.json();
+
+    // Check takeover state
+    const tRes = await fetch('/admin/api/takeover-status/' + currentSession);
+    const tData = await tRes.json();
+    isTakeover = tData.active;
+    updateTakeoverUI();
 
     if (!data.messages || data.messages.length === 0) {
       msgs.innerHTML = '<p style="color:#8d8893">No messages yet.</p>';
       return;
     }
-
     msgs.innerHTML = data.messages.map(m => {
       const isUser = m.role === 'user';
       const time   = new Date(m.created_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
       return \`<div style="margin-bottom:18px;display:flex;flex-direction:column;align-items:\${isUser?'flex-end':'flex-start'}">
-        <div style="font-size:11px;color:#8d8893;margin-bottom:4px">\${isUser ? name : 'Nathaniel The Great'} · \${time}</div>
+        <div style="font-size:11px;color:#8d8893;margin-bottom:4px">\${isUser ? currentName : 'Nathaniel The Great'} · \${time}</div>
         <div style="max-width:75%;padding:12px 16px;border-radius:\${isUser?'16px 4px 4px 16px':'4px 16px 16px 4px'};background:\${isUser?'rgba(192,38,58,0.15)':'#17151a'};\${isUser?'border:1px solid rgba(192,38,58,0.3)':'border-left:3px solid #e3b23c'};font-size:14px;line-height:1.6;white-space:pre-wrap">\${m.content}</div>
       </div>\`;
     }).join('');
   }
+
+  function updateTakeoverUI() {
+    const btn   = document.getElementById('takeover-btn');
+    const badge = document.getElementById('live-badge');
+    const input = document.getElementById('takeover-input');
+    if (isTakeover) {
+      btn.textContent   = 'Hand Back to AI';
+      btn.style.background = '#c0263a';
+      btn.style.color   = '#fff';
+      badge.style.display = 'inline-block';
+      input.style.display = 'block';
+    } else {
+      btn.textContent   = 'Take Over Chat';
+      btn.style.background = '#e3b23c';
+      btn.style.color   = '#000';
+      badge.style.display = 'none';
+      input.style.display = 'none';
+    }
+  }
+
+  async function toggleTakeover() {
+    isTakeover = !isTakeover;
+    await fetch('/admin/api/takeover/' + currentSession, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ active: isTakeover })
+    });
+    updateTakeoverUI();
+  }
+
+  async function sendAdminMsg() {
+    const input = document.getElementById('admin-msg');
+    const content = input.value.trim();
+    if (!content) return;
+    input.value = '';
+    await fetch('/admin/api/send/' + currentSession, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ content })
+    });
+    await refreshConvo();
+  }
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && document.activeElement.id === 'admin-msg') sendAdminMsg();
+  });
   </script>
   </body></html>`);
+});
+
+app.get('/admin/api/takeover-status/:sessionId', adminAuth, async (req, res) => {
+  if (!pool) return res.json({ active: false });
+  const r = await pool.query('SELECT active FROM session_takeovers WHERE session_id = $1', [decodeURIComponent(req.params.sessionId)]);
+  res.json({ active: r.rows[0]?.active || false });
 });
 
 app.get('/admin/api/session/:sessionId', adminAuth, async (req, res) => {
