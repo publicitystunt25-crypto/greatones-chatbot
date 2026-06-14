@@ -659,7 +659,8 @@
 const API_ENDPOINT = '/api/chat';
 
 // Generate a unique session ID per browser tab visit
-const SESSION_ID = Date.now().toString(36) + Math.random().toString(36).slice(2);
+const SAVED = JSON.parse(localStorage.getItem('ntg_user') || 'null');
+const SESSION_ID = SAVED?.sessionId || (Date.now().toString(36) + Math.random().toString(36).slice(2));
 
 // ═══════════════════════════════════════════════════════
 //  SYSTEM PROMPT
@@ -999,33 +1000,61 @@ const intakeOverlay = document.getElementById('intake-overlay');
 const intakeSubmit  = document.getElementById('intake-submit');
 const intakeError   = document.getElementById('intake-error');
 
-intakeSubmit.addEventListener('click', async () => {
-  const artist    = document.getElementById('intake-artist').value.trim();
-  const instagram = document.getElementById('intake-instagram').value.trim();
-  const email     = document.getElementById('intake-email').value.trim();
-  const phone     = document.getElementById('intake-phone').value.trim();
+async function startChat() {
+  intakeOverlay.classList.add('hidden');
 
-  if (!artist || !instagram || !email || !phone) {
-    intakeError.style.display = 'block';
-    return;
+  // Restore past conversation from server
+  if (SAVED?.sessionId) {
+    try {
+      const res  = await fetch('/api/history/' + SAVED.sessionId);
+      const data = await res.json();
+      if (data.messages && data.messages.length > 0) {
+        data.messages.forEach(m => {
+          history.push({ role: m.role, content: m.content });
+          addMsg(m.role === 'user' ? 'user' : 'ceo', m.content);
+        });
+        input.focus();
+        startPolling();
+        return;
+      }
+    } catch (_) {}
   }
 
-  intakeSubmit.disabled = true;
-  intakeSubmit.textContent = 'One sec…';
-
-  try {
-    await fetch('/api/lead', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId: SESSION_ID, artist, instagram, email, phone }),
-    });
-  } catch (_) {}
-
-  intakeOverlay.classList.add('hidden');
   addMsg('ceo', WELCOME_MESSAGE);
   input.focus();
   startPolling();
-});
+}
+
+// Skip form if returning visitor
+if (SAVED) {
+  startChat();
+} else {
+  intakeSubmit.addEventListener('click', async () => {
+    const artist    = document.getElementById('intake-artist').value.trim();
+    const instagram = document.getElementById('intake-instagram').value.trim();
+    const email     = document.getElementById('intake-email').value.trim();
+    const phone     = document.getElementById('intake-phone').value.trim();
+
+    if (!artist || !instagram || !email || !phone) {
+      intakeError.style.display = 'block';
+      return;
+    }
+
+    intakeSubmit.disabled = true;
+    intakeSubmit.textContent = 'One sec…';
+
+    try {
+      await fetch('/api/lead', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: SESSION_ID, artist, instagram, email, phone }),
+      });
+    } catch (_) {}
+
+    localStorage.setItem('ntg_user', JSON.stringify({ sessionId: SESSION_ID, artist, instagram, email, phone }));
+    startChat();
+  });
+}
 
 // allow Enter key on last field
 document.getElementById('intake-phone').addEventListener('keydown', e => {

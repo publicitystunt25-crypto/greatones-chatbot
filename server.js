@@ -79,6 +79,16 @@ async function checkAndFlagPayment(sessionId, content) {
   }
 }
 
+// ── HISTORY — client fetches past messages ────────────────
+app.get('/api/history/:sessionId', async (req, res) => {
+  if (!pool) return res.json({ messages: [] });
+  const result = await pool.query(
+    'SELECT role, content FROM conversations WHERE session_id = $1 ORDER BY created_at ASC',
+    [req.params.sessionId]
+  );
+  res.json({ messages: result.rows });
+});
+
 // ── POLL — client checks for admin messages ───────────────
 app.get('/api/poll/:sessionId', async (req, res) => {
   if (!pool) return res.json({ takeover: false, message: null });
