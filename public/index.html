@@ -459,6 +459,17 @@
     }
 
     /* ── REDUCED MOTION ──────────────────────── */
+    @media (max-width: 768px) {
+      .bubble,
+      .msg.user .bubble,
+      .msg.error .bubble {
+        background: transparent !important;
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+        text-shadow: 0 1px 4px rgba(0,0,0,0.8);
+      }
+    }
+
     @media (prefers-reduced-motion: reduce) {
       .vinyl-disc svg,
       .ticker-track { animation: none; }
