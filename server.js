@@ -178,7 +178,7 @@ app.get('/admin', adminAuth, async (req, res) => {
   );
   const leadRows = leadsRes.rows.map(r => `
     <tr>
-      <td><a href="/admin/session/${encodeURIComponent(r.session_id)}" style="color:#e3b23c;text-decoration:none;font-weight:bold">${escHtml(r.artist || 'Unknown')}</a></td>
+      <td><a href="#conversation-panel" onclick="loadConvo('${encodeURIComponent(r.session_id)}','${escHtml(r.artist||'Unknown')}')" style="color:#e3b23c;text-decoration:none;font-weight:bold;cursor:pointer">${escHtml(r.artist || 'Unknown')}</a></td>
       <td>${escHtml(r.instagram || '')}</td>
       <td>${escHtml(r.email || '')}</td>
       <td>${escHtml(r.phone || '')}</td>
@@ -186,7 +186,7 @@ app.get('/admin', adminAuth, async (req, res) => {
     </tr>`).join('');
 
   const rows = sessionsRes.rows.map(r => `
-    <tr onclick="location.href='/admin/session/${r.session_id}'" style="cursor:pointer">
+    <tr onclick="loadConvo('${encodeURIComponent(r.session_id)}','Session')" style="cursor:pointer">
       <td>${new Date(r.started).toLocaleString()}</td>
       <td>${new Date(r.last_msg).toLocaleString()}</td>
       <td>${r.msg_count}</td>
@@ -233,7 +233,51 @@ app.get('/admin', adminAuth, async (req, res) => {
     <tbody>${rows || '<tr><td colspan="4" style="color:#8d8893;padding:20px">No conversations yet.</td></tr>'}</tbody>
   </table>
   <div class="pages">${pages}</div>
+
+  <div id="conversation-panel" style="display:none;margin-top:40px;border-top:1px solid #252230;padding-top:28px">
+    <h2 id="convo-title" style="color:#e3b23c;font-size:18px;margin-bottom:20px"></h2>
+    <div id="convo-messages"></div>
+  </div>
+
+  <script>
+  async function loadConvo(sessionId, name) {
+    const panel = document.getElementById('conversation-panel');
+    const title = document.getElementById('convo-title');
+    const msgs  = document.getElementById('convo-messages');
+    title.textContent = name;
+    msgs.innerHTML = '<p style="color:#8d8893">Loading…</p>';
+    panel.style.display = 'block';
+    panel.scrollIntoView({ behavior: 'smooth' });
+
+    const res  = await fetch('/admin/api/session/' + sessionId);
+    const data = await res.json();
+
+    if (!data.messages || data.messages.length === 0) {
+      msgs.innerHTML = '<p style="color:#8d8893">No messages yet.</p>';
+      return;
+    }
+
+    msgs.innerHTML = data.messages.map(m => {
+      const isUser = m.role === 'user';
+      const time   = new Date(m.created_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+      return \`<div style="margin-bottom:18px;display:flex;flex-direction:column;align-items:\${isUser?'flex-end':'flex-start'}">
+        <div style="font-size:11px;color:#8d8893;margin-bottom:4px">\${isUser ? name : 'Nathaniel The Great'} · \${time}</div>
+        <div style="max-width:75%;padding:12px 16px;border-radius:\${isUser?'16px 4px 4px 16px':'4px 16px 16px 4px'};background:\${isUser?'rgba(192,38,58,0.15)':'#17151a'};\${isUser?'border:1px solid rgba(192,38,58,0.3)':'border-left:3px solid #e3b23c'};font-size:14px;line-height:1.6;white-space:pre-wrap">\${m.content}</div>
+      </div>\`;
+    }).join('');
+  }
+  </script>
   </body></html>`);
+});
+
+app.get('/admin/api/session/:sessionId', adminAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: 'No database.' });
+  const { sessionId } = req.params;
+  const result = await pool.query(
+    'SELECT role, content, created_at FROM conversations WHERE session_id = $1 ORDER BY created_at ASC',
+    [decodeURIComponent(sessionId)]
+  );
+  res.json({ messages: result.rows });
 });
 
 app.get('/admin/session/:sessionId', adminAuth, async (req, res) => {
