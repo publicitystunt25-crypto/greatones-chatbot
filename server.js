@@ -174,11 +174,11 @@ app.get('/admin', adminAuth, async (req, res) => {
   );
 
   const leadsRes = await pool.query(
-    `SELECT artist, instagram, email, phone, created_at FROM leads ORDER BY created_at DESC LIMIT 5`
+    `SELECT session_id, artist, instagram, email, phone, created_at FROM leads ORDER BY created_at DESC LIMIT 100`
   );
   const leadRows = leadsRes.rows.map(r => `
     <tr>
-      <td>${escHtml(r.artist || '')}</td>
+      <td><a href="/admin/session/${encodeURIComponent(r.session_id)}" style="color:#e3b23c;text-decoration:none;font-weight:bold">${escHtml(r.artist || 'Unknown')}</a></td>
       <td>${escHtml(r.instagram || '')}</td>
       <td>${escHtml(r.email || '')}</td>
       <td>${escHtml(r.phone || '')}</td>
