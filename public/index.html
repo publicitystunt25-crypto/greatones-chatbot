@@ -474,9 +474,130 @@
       .ticker-track { animation: none; }
       .msg { animation: none; }
     }
+
+    /* ── INTAKE FORM OVERLAY ─────────────────── */
+    #intake-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.92);
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    #intake-overlay.hidden { display: none; }
+
+    .intake-box {
+      background: #000;
+      border: 1px solid #252230;
+      border-radius: 18px;
+      padding: 36px 32px;
+      width: 100%;
+      max-width: 420px;
+    }
+
+    .intake-box h2 {
+      font-family: 'Anton', sans-serif;
+      font-size: 22px;
+      letter-spacing: 0.1em;
+      color: var(--gold);
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+
+    .intake-box p {
+      font-size: 14px;
+      color: var(--dim);
+      margin-bottom: 24px;
+      line-height: 1.5;
+    }
+
+    .intake-field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 16px;
+    }
+
+    .intake-field label {
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--dim);
+      font-family: 'Anton', sans-serif;
+    }
+
+    .intake-field input {
+      background: #0c0c0e;
+      border: 1px solid #252230;
+      border-radius: 10px;
+      padding: 11px 14px;
+      color: #fff;
+      font-family: 'Inter', sans-serif;
+      font-size: 15px;
+      outline: none;
+      transition: border-color 0.18s;
+    }
+
+    .intake-field input:focus { border-color: rgba(227,178,60,0.55); }
+    .intake-field input::placeholder { color: #454050; }
+
+    #intake-submit {
+      width: 100%;
+      background: var(--gold);
+      color: #000;
+      border: none;
+      border-radius: 12px;
+      padding: 13px;
+      font-family: 'Anton', sans-serif;
+      font-size: 16px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      cursor: pointer;
+      margin-top: 8px;
+      transition: background 0.15s;
+    }
+
+    #intake-submit:hover { background: #f0c650; }
+    #intake-submit:disabled { background: #333; color: #666; cursor: not-allowed; }
+
+    .intake-error {
+      color: #e07882;
+      font-size: 13px;
+      margin-top: 10px;
+      text-align: center;
+      display: none;
+    }
   </style>
 </head>
 <body>
+
+<div id="intake-overlay">
+  <div class="intake-box">
+    <h2>Before We Talk</h2>
+    <p>Drop your info so we know who we're dealing with.</p>
+    <div class="intake-field">
+      <label>Artist Name</label>
+      <input id="intake-artist" type="text" placeholder="Your artist name" autocomplete="off">
+    </div>
+    <div class="intake-field">
+      <label>Instagram</label>
+      <input id="intake-instagram" type="text" placeholder="@yourhandle" autocomplete="off">
+    </div>
+    <div class="intake-field">
+      <label>Email</label>
+      <input id="intake-email" type="email" placeholder="you@email.com" autocomplete="off">
+    </div>
+    <div class="intake-field">
+      <label>Phone Number</label>
+      <input id="intake-phone" type="tel" placeholder="(000) 000-0000" autocomplete="off">
+    </div>
+    <button id="intake-submit">Let's Go</button>
+    <p class="intake-error" id="intake-error">Fill out all fields to continue.</p>
+  </div>
+</div>
 
 <header>
   <div class="header-top">
@@ -868,10 +989,43 @@ if (!navigator.mediaDevices || !window.MediaRecorder) {
 }
 
 // ═══════════════════════════════════════════════════════
-//  INIT — show welcome message
+//  INTAKE FORM
 // ═══════════════════════════════════════════════════════
-addMsg('ceo', WELCOME_MESSAGE);
-input.focus();
+const intakeOverlay = document.getElementById('intake-overlay');
+const intakeSubmit  = document.getElementById('intake-submit');
+const intakeError   = document.getElementById('intake-error');
+
+intakeSubmit.addEventListener('click', async () => {
+  const artist    = document.getElementById('intake-artist').value.trim();
+  const instagram = document.getElementById('intake-instagram').value.trim();
+  const email     = document.getElementById('intake-email').value.trim();
+  const phone     = document.getElementById('intake-phone').value.trim();
+
+  if (!artist || !instagram || !email || !phone) {
+    intakeError.style.display = 'block';
+    return;
+  }
+
+  intakeSubmit.disabled = true;
+  intakeSubmit.textContent = 'One sec…';
+
+  try {
+    await fetch('/api/lead', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId: SESSION_ID, artist, instagram, email, phone }),
+    });
+  } catch (_) {}
+
+  intakeOverlay.classList.add('hidden');
+  addMsg('ceo', WELCOME_MESSAGE);
+  input.focus();
+});
+
+// allow Enter key on last field
+document.getElementById('intake-phone').addEventListener('keydown', e => {
+  if (e.key === 'Enter') intakeSubmit.click();
+});
 </script>
 
 </body>

@@ -14,6 +14,17 @@ const pool = process.env.DATABASE_URL
 async function initDb() {
   if (!pool) return;
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS leads (
+      id SERIAL PRIMARY KEY,
+      session_id TEXT,
+      artist TEXT,
+      instagram TEXT,
+      email TEXT,
+      phone TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
+  await pool.query(`
     DROP TABLE IF EXISTS conversations;
     CREATE TABLE conversations (
       id SERIAL PRIMARY KEY,
@@ -39,6 +50,22 @@ async function logMessage(sessionId, role, content) {
     console.error('DB log error:', err.message);
   }
 }
+
+// ── LEAD CAPTURE ─────────────────────────────────────────
+app.post('/api/lead', async (req, res) => {
+  const { sessionId, artist, instagram, email, phone } = req.body;
+  if (pool) {
+    try {
+      await pool.query(
+        'INSERT INTO leads (session_id, artist, instagram, email, phone) VALUES ($1, $2, $3, $4, $5)',
+        [sessionId, artist, instagram, email, phone]
+      );
+    } catch (err) {
+      console.error('Lead save error:', err.message);
+    }
+  }
+  res.json({ ok: true });
+});
 
 // ── TRANSCRIPTION ─────────────────────────────────────────
 app.post('/api/transcribe', express.raw({ type: '*/*', limit: '10mb' }), async (req, res) => {
@@ -147,6 +174,18 @@ app.get('/admin', adminAuth, async (req, res) => {
     [search, `%${search}%`, limit, offset]
   );
 
+  const leadsRes = await pool.query(
+    `SELECT artist, instagram, email, phone, created_at FROM leads ORDER BY created_at DESC LIMIT 5`
+  );
+  const leadRows = leadsRes.rows.map(r => `
+    <tr>
+      <td>${escHtml(r.artist || '')}</td>
+      <td>${escHtml(r.instagram || '')}</td>
+      <td>${escHtml(r.email || '')}</td>
+      <td>${escHtml(r.phone || '')}</td>
+      <td>${new Date(r.created_at).toLocaleString()}</td>
+    </tr>`).join('');
+
   const rows = sessionsRes.rows.map(r => `
     <tr onclick="location.href='/admin/session/${r.session_id}'" style="cursor:pointer">
       <td>${new Date(r.started).toLocaleString()}</td>
@@ -164,20 +203,27 @@ app.get('/admin', adminAuth, async (req, res) => {
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <style>
     body{font-family:sans-serif;background:#0c0c0e;color:#f1ede4;padding:24px;margin:0}
-    h1{color:#e3b23c;font-size:22px;margin-bottom:20px}
+    h1,h2{color:#e3b23c} h1{font-size:22px;margin-bottom:8px} h2{font-size:15px;margin:28px 0 10px;letter-spacing:0.08em;text-transform:uppercase}
+    table{width:100%;border-collapse:collapse;font-size:14px;margin-bottom:32px}
+    th{text-align:left;color:#8d8893;border-bottom:1px solid #252230;padding:8px 12px;font-weight:500}
+    td{padding:10px 12px;border-bottom:1px solid #1a1820;vertical-align:top}
+    tr:hover td{background:#17151a} a{color:#8d8893}
     form{margin-bottom:20px;display:flex;gap:8px}
     input{background:#17151a;border:1px solid #252230;color:#f1ede4;padding:8px 12px;border-radius:8px;font-size:14px;flex:1}
     button{background:#e3b23c;color:#0c0c0e;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-weight:bold}
-    table{width:100%;border-collapse:collapse;font-size:14px}
-    th{text-align:left;color:#8d8893;border-bottom:1px solid #252230;padding:8px 12px;font-weight:500}
-    td{padding:10px 12px;border-bottom:1px solid #1a1820;vertical-align:top}
-    tr:hover td{background:#17151a}
-    .pages{margin-top:20px;color:#8d8893}
-    .pages a{color:#8d8893}
     .stat{color:#8d8893;font-size:13px;margin-bottom:16px}
+    .pages{margin-top:20px;color:#8d8893} .pages a{color:#8d8893}
   </style></head><body>
-  <h1>Nathaniel The Great — Conversations</h1>
-  <p class="stat">${total} total sessions</p>
+  <h1>Nathaniel The Great — Dashboard</h1>
+  <p class="stat">${total} total conversations</p>
+
+  <h2>Leads</h2>
+  <table>
+    <thead><tr><th>Artist</th><th>Instagram</th><th>Email</th><th>Phone</th><th>Date</th></tr></thead>
+    <tbody>${leadRows || '<tr><td colspan="5" style="color:#8d8893;padding:20px">No leads yet.</td></tr>'}</tbody>
+  </table>
+
+  <h2>Conversations</h2>
   <form method="get">
     <input name="q" value="${escHtml(search)}" placeholder="Search conversations…">
     <button type="submit">Search</button>
