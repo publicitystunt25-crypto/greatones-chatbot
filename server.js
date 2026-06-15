@@ -273,14 +273,26 @@ app.get('/admin', adminAuth, async (req, res) => {
   const leadsRes = await pool.query(
     `SELECT session_id, artist, instagram, email, phone, created_at FROM leads ORDER BY created_at DESC LIMIT 100`
   );
-  const leadRows = leadsRes.rows.map(r => `
+  // Build a map of session stats for leads
+  const statsMap = {};
+  sessionsRes.rows.forEach(r => {
+    statsMap[r.session_id] = { started: r.started, last_msg: r.last_msg, msg_count: r.msg_count, flagged: r.flagged, takeover_active: r.takeover_active };
+  });
+
+  const leadRows = leadsRes.rows.map(r => {
+    const stats = statsMap[r.session_id] || {};
+    const igHandle = (r.instagram || '').replace(/^@/, '');
+    const igLink = igHandle ? `<a href="https://instagram.com/${igHandle}" target="_blank" style="color:#e3b23c;text-decoration:none">@${escHtml(igHandle)}</a>` : '';
+    const badges = `${stats.flagged ? '<span style="background:#c0263a;color:#fff;font-size:10px;padding:2px 7px;border-radius:8px;font-weight:bold;margin-left:6px">💰 PAY</span>' : ''}${stats.takeover_active ? '<span style="background:#e3b23c;color:#000;font-size:10px;padding:2px 7px;border-radius:8px;font-weight:bold;margin-left:4px">🎙 LIVE</span>' : ''}`;
+    return `
     <tr>
-      <td><a href="#conversation-panel" onclick="loadConvo('${encodeURIComponent(r.session_id)}','${escHtml(r.artist||'Unknown')}')" style="color:#e3b23c;text-decoration:none;font-weight:bold;cursor:pointer">${escHtml(r.artist || 'Unknown')}</a></td>
-      <td>${escHtml(r.instagram || '')}</td>
+      <td><a href="#conversation-panel" onclick="loadConvo('${encodeURIComponent(r.session_id)}','${escHtml(r.artist||'Unknown')}','${stats.started ? new Date(stats.started).toLocaleString() : ''}','${stats.last_msg ? new Date(stats.last_msg).toLocaleString() : ''}')" style="color:#e3b23c;text-decoration:none;font-weight:bold;cursor:pointer">${escHtml(r.artist || 'Unknown')}</a>${badges}</td>
+      <td>${igLink}</td>
       <td>${escHtml(r.email || '')}</td>
       <td>${escHtml(r.phone || '')}</td>
       <td>${new Date(r.created_at).toLocaleString()}</td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
 
   const rows = sessionsRes.rows.map(r => `
     <tr onclick="loadConvo('${encodeURIComponent(r.session_id)}','Session')" style="cursor:pointer">
@@ -320,23 +332,13 @@ app.get('/admin', adminAuth, async (req, res) => {
     <tbody>${leadRows || '<tr><td colspan="5" style="color:#8d8893;padding:20px">No leads yet.</td></tr>'}</tbody>
   </table>
 
-  <h2>Conversations</h2>
-  <form method="get">
-    <input name="q" value="${escHtml(search)}" placeholder="Search conversations…">
-    <button type="submit">Search</button>
-    ${search ? '<a href="/admin"><button type="button">Clear</button></a>' : ''}
-  </form>
-  <table>
-    <thead><tr><th>Started</th><th>Last Message</th><th>Messages</th><th>First Message</th></tr></thead>
-    <tbody>${rows || '<tr><td colspan="4" style="color:#8d8893;padding:20px">No conversations yet.</td></tr>'}</tbody>
-  </table>
-  <div class="pages">${pages}</div>
 
   <div id="conversation-panel" style="display:none;margin-top:40px;border-top:1px solid #252230;padding-top:28px">
-    <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;flex-wrap:wrap">
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:6px;flex-wrap:wrap">
       <h2 id="convo-title" style="color:#e3b23c;font-size:18px;margin:0"></h2>
       <span id="live-badge" style="display:none;background:#e3b23c;color:#000;font-size:11px;padding:3px 10px;border-radius:10px;font-weight:bold">🎙 YOU'RE LIVE</span>
     </div>
+    <p id="convo-meta" style="color:#8d8893;font-size:12px;margin:0 0 16px"></p>
     <div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap">
       <button id="takeover-btn" onclick="toggleTakeover()" style="background:#e3b23c;color:#000;border:none;padding:9px 18px;border-radius:8px;cursor:pointer;font-weight:bold;font-size:13px">Take Over Chat</button>
       <button onclick="refreshConvo()" style="background:#17151a;color:#f1ede4;border:1px solid #252230;padding:9px 18px;border-radius:8px;cursor:pointer;font-size:13px">Refresh</button>
@@ -356,12 +358,14 @@ app.get('/admin', adminAuth, async (req, res) => {
   let isTakeover = false;
   let refreshTimer = null;
 
-  async function loadConvo(sessionId, name) {
+  async function loadConvo(sessionId, name, started, lastMsg) {
     currentSession = sessionId;
     currentName = name;
     const panel = document.getElementById('conversation-panel');
     const title = document.getElementById('convo-title');
+    const meta  = document.getElementById('convo-meta');
     title.textContent = name;
+    meta.textContent  = started ? \`Started: \${started}   ·   Last message: \${lastMsg}\` : '';
     panel.style.display = 'block';
     panel.scrollIntoView({ behavior: 'smooth' });
     if (refreshTimer) clearInterval(refreshTimer);
