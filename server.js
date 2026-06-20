@@ -8,7 +8,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // ── DATABASE ─────────────────────────────────────────────
 const pool = process.env.DATABASE_URL
-  ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } })
+  ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false }, options: '--search_path=public' })
   : null;
 
 async function initDb() {
